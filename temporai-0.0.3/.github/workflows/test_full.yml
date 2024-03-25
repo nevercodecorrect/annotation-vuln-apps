@@ -1,0 +1,42 @@
+name: "Tests: Full"
+
+on:
+  schedule:
+    # Shared cron time with test_full_gh.yml.
+    - cron: "17 4 * * 3"
+  workflow_dispatch:
+
+jobs:
+  Tests:
+    runs-on:
+      - self-hosted
+      - ${{ matrix.os }}
+    strategy:
+      matrix:
+        python-version: ["3.7", "3.8", "3.9", "3.10"]
+        os: [Linux, Windows, macOS]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        if: matrix.python-version != '3.7'
+        run: |
+          pip install --upgrade pip
+          pip install .[testing]
+      - name: Install dependencies (python 3.7, use legacy resolver)
+        if: matrix.python-version == '3.7'
+        run: |
+          pip install --upgrade pip
+          pip install .[testing] --use-deprecated=legacy-resolver
+      - name: Test with pytest (xdist)
+        run: pytest -vvvx -n auto -m "not skipci" --durations=50 --cov
+      # Note: to update to codecov, test_full_gh.yml workflow needs to be run.
+      - name: Run doctests with pytest (xdist)
+        run: pytest -vvvx -n auto src/ --doctest-modules --durations=50
+      - name: Test notebooks run without error
+        run: python tests/nb_eval.py --nb_dir ./

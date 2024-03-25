@@ -1,0 +1,253 @@
+<template>
+  <div
+    :class="{
+      'relation-views-node': true,
+      'relation-views-node-checkbox': showCheckbox,
+    }"
+    @click="clickNode"
+  >
+    <span>
+      <a-checkbox @click.stop="clickCheckbox" class="relation-views-node-checkbox" v-if="showCheckbox" />
+      <template v-if="icon">
+        <img
+          v-if="icon.includes('$$') && icon.split('$$')[2]"
+          :src="`/api/common-setting/v1/file/${icon.split('$$')[3]}`"
+          :style="{ maxHeight: '14px', maxWidth: '14px' }"
+        />
+        <ops-icon
+          v-else-if="icon.includes('$$') && icon.split('$$')[0]"
+          :style="{
+            color: icon.split('$$')[1],
+            fontSize: '14px',
+          }"
+          :type="icon.split('$$')[0]"
+        />
+        <span class="relation-views-node-icon" v-else>{{ icon ? icon[0].toUpperCase() : 'i' }}</span>
+      </template>
+      <span class="relation-views-node-title">{{ this.title }}</span>
+    </span>
+    <a-dropdown>
+      <a-menu slot="overlay" @click="({ key: menuKey }) => this.onContextMenuClick(this.treeKey, menuKey)">
+        <template v-if="showBatchLevel === null">
+          <a-menu-item
+            v-for="item in menuList"
+            :key="item.id"
+          ><a-icon type="plus-circle" />{{ $t('new') }} {{ item.alias }}</a-menu-item
+          >
+          <a-menu-item
+            v-if="showDelete"
+            key="delete"
+          ><ops-icon type="icon-xianxing-delete" />{{ $t('cmdb.serviceTree.deleteNode') }}</a-menu-item
+          >
+          <a-menu-divider />
+          <a-menu-item key="grant"><a-icon type="user-add" />{{ $t('grant') }}</a-menu-item>
+          <a-menu-item key="revoke"><a-icon type="user-delete" />{{ $t('revoke') }}</a-menu-item>
+          <a-menu-item key="view"><a-icon type="eye" />{{ $t('cmdb.serviceTree.view') }}</a-menu-item>
+          <a-menu-divider />
+          <a-menu-item
+            key="batch"
+          ><ops-icon type="icon-xianxing-copy" />{{ $t('cmdb.serviceTree.batch') }}</a-menu-item
+          >
+        </template>
+        <template v-else>
+          <a-menu-item
+            :disabled="!batchTreeKey || !batchTreeKey.length"
+            key="batchGrant"
+          ><a-icon type="user-add" />{{ $t('grant') }}</a-menu-item
+          >
+          <a-menu-item
+            :disabled="!batchTreeKey || !batchTreeKey.length"
+            key="batchRevoke"
+          ><a-icon type="user-delete" />{{ $t('revoke') }}</a-menu-item
+          >
+          <a-menu-divider />
+          <template v-if="showBatchLevel > 0">
+            <a-menu-item
+              :disabled="!batchTreeKey || !batchTreeKey.length"
+              key="batchDelete"
+            ><ops-icon type="icon-xianxing-delete" />{{ $t('delete') }}</a-menu-item
+            >
+            <a-menu-divider />
+          </template>
+          <a-menu-item key="batchCancel"><a-icon type="close-circle" />{{ $t('cancel') }}</a-menu-item>
+        </template>
+      </a-menu>
+      <a-icon class="relation-views-node-operation" type="ellipsis" />
+    </a-dropdown>
+    <a-icon :style="{ fontSize: '10px' }" v-if="childLength && !isLeaf" :type="switchIcon"></a-icon>
+  </div>
+</template>
+
+<script>
+export default {
+  name: 'ContextMenu',
+  props: {
+    title: {
+      type: String,
+      default: '',
+    },
+    treeKey: {
+      type: String,
+      default: '',
+    },
+    levels: {
+      type: Array,
+      default: () => [],
+    },
+    currentViews: {
+      type: Object,
+      default: () => {},
+    },
+    id2type: {
+      type: Object,
+      default: () => {},
+    },
+    isLeaf: {
+      type: Boolean,
+      default: () => false,
+    },
+    ciTypeIcons: {
+      type: Object,
+      default: () => {},
+    },
+    showBatchLevel: {
+      type: Number,
+      default: null,
+    },
+    batchTreeKey: {
+      type: Array,
+      default: () => [],
+    },
+  },
+  data() {
+    return {
+      switchIcon: 'down',
+    }
+  },
+  computed: {
+    childLength() {
+      const reg = /(?<=\()\S+(?=\))/g
+      return Number(this.title.match(reg)[0])
+    },
+    splitTreeKey() {
+      return this.treeKey.split('@^@')
+    },
+    _tempTree() {
+      return this.splitTreeKey[this.splitTreeKey.length - 1].split('%')
+    },
+    _typeIdIdx() {
+      return this.levels.findIndex((level) => level[0] === Number(this._tempTree[1])) // 当前节点在levels中的index
+    },
+    showDelete() {
+      if (this._typeIdIdx === 0) {
+        // 如果是第一层节点，则不能删除
+        return false
+      }
+      return true
+    },
+    menuList() {
+      let _menuList = []
+      if (this._typeIdIdx > -1 && this._typeIdIdx < this.levels.length - 1) {
+        // 不是叶子节点
+        const id = Number(this.levels[this._typeIdIdx + 1])
+        _menuList = [
+          {
+            id,
+            alias: this.id2type[id].alias || this.id2type[id].name,
+          },
+        ]
+      } else {
+        // 叶子节点
+        _menuList = this.currentViews.node2show_types[this._tempTree[1]].map((item) => {
+          return { id: item.id, alias: item.alias || item.name }
+        })
+      }
+      return _menuList
+    },
+    icon() {
+      const _split = this.treeKey.split('@^@')
+      const currentNodeTypeId = _split[_split.length - 1].split('%')[1]
+      return this.ciTypeIcons[Number(currentNodeTypeId)] ?? null
+    },
+    showCheckbox() {
+      return this.showBatchLevel === this.treeKey.split('@^@').filter((item) => !!item).length - 1
+    },
+  },
+  methods: {
+    onContextMenuClick(treeKey, menuKey) {
+      this.$emit('onContextMenuClick', treeKey, menuKey)
+    },
+    clickNode() {
+      this.$emit('onNodeClick', this.treeKey)
+      this.switchIcon = this.switchIcon === 'down' ? 'up' : 'down'
+    },
+    clickCheckbox() {
+      this.$emit('clickCheckbox', this.treeKey)
+    },
+  },
+}
+</script>
+
+<style lang="less" scoped>
+.relation-views-node {
+  width: 100%;
+  display: inline-flex;
+  justify-content: space-between;
+  align-items: center;
+  > span {
+    display: flex;
+    overflow: hidden;
+    align-items: center;
+    width: 100%;
+    .relation-views-node-icon {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background-color: #d3d3d3;
+      color: #fff;
+      text-align: center;
+      line-height: 16px;
+      font-size: 12px;
+    }
+    .relation-views-node-title {
+      padding-left: 5px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      overflow: hidden;
+      width: calc(100% - 16px);
+    }
+  }
+  .relation-views-node-operation {
+    display: none;
+    margin-right: 5px;
+  }
+}
+.relation-views-node-checkbox,
+.relation-views-node-moveright {
+  > span {
+    .relation-views-node-checkbox {
+      margin-right: 10px;
+    }
+    .relation-views-node-title {
+      width: calc(100% - 42px);
+    }
+  }
+}
+</style>
+
+<style lang="less">
+.relation-views-left .ant-tree-node-content-wrapper:hover {
+  .relation-views-node-operation {
+    display: inline-block;
+  }
+}
+.relation-views-left {
+  ul:has(.relation-views-node-checkbox) > li > ul {
+    margin-left: 26px;
+  }
+  ul:has(.relation-views-node-checkbox) {
+    margin-left: 0 !important;
+  }
+}
+</style>
